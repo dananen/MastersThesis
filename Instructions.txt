@@ -1,0 +1,105 @@
+Instruktioner för att hämta data (as of 17 mars 2023):
+
+1. Kör FindRevertChangesets.py. Den kollar igenom en hel changeset-dump och hittar kommentarer som har "revert" i sig
+som ska vara efter "changeset" || "chgset" || "cs" och plockar dessutom när dessa revertade changesets skapades.
+Input: Changeset history file, t.ex. '/Users/dansvenonius/Desktop/changesets-230227.osm.bz2'.
+Output: CSV med kolonner för 'revert_cs_id', 'revert_created_at', 'comment', 'reverted_id', 'reverted_created_at'
+i '/Users/dansvenonius/Desktop/Misc output/reverted_changesets.csv'
+
+
+
+1.5 Alternativt körs FindFalseLabelChangesets.py, för att hitta data som inte har blivit revertade. Resterande steg
+är däremot samma.
+Input: Changeset history file, t.ex. '/Users/dansvenonius/Desktop/changesets-230227.osm.bz2'. Tar även revertade cs_id
+för att se vad vilka CS vi ej ska sampla, från filen '/Users/dansvenonius/Desktop/Misc output/Reverted Data/reverted_changesets.csv'
+Output: CSV med kolonner för 'cs_id' och 'created_at' i /Users/dansvenonius/Desktop/Misc output/Not Reverted Data/false_label_changesets.csv'
+
+
+
+2. Kör Preprocessing.py. Den använder Main API för att hämta ut innehållet i changesetet. Det innebär att den kollar på
+dels metadatan och de skapade/modifierade/borttagna elementen, och dessutom sorterar element som changesetet skapade
+(som vi har full information om gällande tags, osv) och element som modifierades/deletades, som vi måste jobba mer med.
+Den outputtar dessutom User data och bad_uids, som är uids som gav upphov till något error och som vi kastar bort.
+Input: Outputen från tidigare steg, '/Users/dansvenonius/Desktop/Misc output/Reverted Data/reverted_changesets.csv'.
+Finns även för icke-revertade i '/Users/dansvenonius/Desktop/Misc output/Not Reverted Data/false_label_changesets.csv'.
+Behöver bara ids från dessa.
+Output: En himla massa. Changeset-datan, elementen som ingår i alla dessa changesets. Lite user-data som ska processas vidare.
+Beroende på om reverted inte reverted blir pathen: '/Users/dansvenonius/Desktop/Preprocessing output/Reverted Data/'
+eller '/Users/dansvenonius/Desktop/Preprocessing output/Not Reverted Data/' följt av changeset_data.csv, user_data.csv
+node_data.csv, way_data.csv, relation_data.csv, node_create_data.csv, way_create_data.csv, relation_create_data.csv, bad_uids.csv.
+
+
+3. Kör GetAccCreationDate.py. Den plockar ut när accountet skapades för de relevanta user idsen. Denna kan även köras
+senare.
+Input: '/Users/dansvenonius/Desktop/Preprocessing output/Reverted Data/user_data.csv' för att få uids. Finns även i
+'/Users/dansvenonius/Desktop/Preprocessing output/Not Reverted Data/user_data.csv'.
+Output: Lägger till en kolonn med acc_created i samma fil.
+
+
+
+4. Kör IdsToTxtFile.py för att få filen vi sedan kan inputta till osmiums CLI-verktyg.
+Input: path '/Users/dansvenonius/Desktop/Preprocessing output/Reverted Data/' (alt för Not Reverted Data), för att sedan
+hämta node, way och relation härifrån.
+Output: En text-fil '/Users/dansvenonius/Desktop/Misc output/Reverted Data/CLI_element_ids_for_history.txt' (alt. för Not Reverted Data)
+med ids som kan gå in i CLI-kommandot för att filtrera fram element.
+
+5. Kör osmiums CLI-verktyg för att plocka ut alla de element (nodes/ways/relations) som vi sedan måste jämföra med
+dess tidigare iterationer. Ett kommando (callat från desktop) som har funkat är:
+osmium getid ./history-230227.osm.pbf --id-file ./Misc\ output/CLI_element_ids.txt --with-history -o ./Misc\ output/relevant_reverted_elements.osm.pbf
+Input: History-filen, '/Users/dansvenonius/Desktop/history-230227.osm.pbf',
+ids från '/Users/dansvenonius/Desktop/Misc output/Reverted Data/CLI_element_ids_for_history.txt' (alt. Not Reverted Data)
+
+
+
+6. Kör GetElementHistory.py på filen som steg 5 outputtade. Den kör igenom dessa element och tittar på tidigare iterationer
+för att få kontext på objektets historia, men framförallt kollar på föreågende version av elementet.
+Input: Filtrerade history-filen. '/Users/dansvenonius/Desktop/Misc output/Reverted Data/reverted_elements_history.osm.pbf'
+eller '/Users/dansvenonius/Desktop/Misc output/Not Reverted Data/not_reverted_elements_history.osm.pbf'.
+Output: Elementen som inte var created i changesetet, och deras history, framförallt jämförelse med föregående iteration,
+från '/Users/dansvenonius/Desktop/History output/Reverted Data/elements_modifydelete_data.csv'. IDs för element vars tidigare
+iteration inte hittades i OSM kastas bort och deras ID samt typer läggs i
+'/Users/dansvenonius/Desktop/History output/Reverted Data/bad_elements_data.csv' (alt. Not Reverted Data)
+
+
+
+7. Kör FindUserChangesetData.py som plockar ut nprev_changesets och active_weeks för alla changesets. Anledningen till
+att vi delar upp det på changesets och inte användare är för att samma användare kan komma upp flera gånger, och har ju
+då olika historik vi två olika tillfällen.
+Input: Changeset history-fil '/Users/dansvenonius/Desktop/changesets-230227.osm.bz2'.
+Output: '/Users/dansvenonius/Desktop/Preprocessing output/Reverted Data/user_data.csv' (alt Not Reverted Data). Denna skriver
+över nuvarande user_data-fil och lägger till kolonner för 'nprev_changesets' och 'active_weeks'.
+
+
+
+8. Kör GetElementFromUids.py. Denna tittar på användarens historia och kollar hur många creates, modifications och deletes
+de hade innan de gjorde changesetet. Därför delas även denna upp på changesets och inte på användaren. Denna outputtar även
+en stor textfil med alla element-ids som de användarna vi är intresserade av har rört.
+Input: Stora history-filen '/Users/dansvenonius/Desktop/history-230227.osm.pbf'.
+Output: En CSV-fil där vi lägger till hur många operationer (create/modify/delete/contributions) som har gjorts av använder
+upp till skapandet av changesetet. Dessa läggs i '/Users/dansvenonius/Desktop/History output/Reverted Data/user_data_w_operations.csv',
+och skriver alltså inte över user_data i Preprocessing output. Dessutom outputtar denna en text-fil
+'/Users/dansvenonius/Desktop/History output/Reverted Data/CLI_element_ids_for_nkeywords.txt' som ska användas för att filtrera
+fram alla element som våra användare har rört. (alt för Not Reverted Data)
+
+
+
+9. Kör osmiums CLI-verktyg igen, för att plocka ut nya element, som är alla dem element som har rörts av minst en av
+de användare vi är intresserade av. Kolla på steg 5 för att få en idé på hur kommandot ska se, byt bara ut filnamnen.
+Input: Text-fil för filtrering, '/Users/dansvenonius/Desktop/History output/Reverted Data/CLI_element_ids_for_nkeywords.txt'
+samt stora history-filen '/Users/dansvenonius/Desktop/history-230227.osm.pbf'.
+Output: Filtrerad history-fil. LÄGG TILL EXAKT VAR DEN ÄR
+
+
+
+10. Med outputten från steg 9, kör GetNkeywords.py. Den plockar ut alla gånger en användare för ett changeset har
+använt någon av de 12 vanligaste taggarna (nycklarna alltså) i OSM, alltså ett mått på hur mycket OSM-convention som
+används. Detta är det sista steget där vi hämtar data.
+Input: Filtrerad history med alla element som rörts av minst en användare vi är intresserade av,
+'/Users/dansvenonius/Desktop/Misc output/Reverted Data/elements_for_nkeywords.osm.pbf' (alt Not Reverted Data)
+Output: En ny CSV-fil med ifylld kolonn för nkeywords i
+'/Users/dansvenonius/Desktop/History output/Reverted Data/user_data_w_nkeywords.csv' (alt Not Reverted Data)
+
+
+
+
+11. Eventuellt kombinera olika CSV-filer.
