@@ -21,15 +21,24 @@ class UserHistoryHandler(osmium.SimpleHandler):
             for user_cs_dict in self.user_data[element.uid].values():
                 if element.timestamp < user_cs_dict['cs_created_at']:
                     user_cs_dict[hhf.determine_operation(self.prev_element_visible, element.visible, version=element.version)] += 1
+                    if element.version == 1:
+                        if type == 'n':
+                            user_cs_dict['create_nodes'] += 1
+                        elif type == 'w':
+                            user_cs_dict['create_ways'] += 1
+                        else:
+                            user_cs_dict['create_relations'] += 1
                     self.relevant_ids.add(type + str(element.id))
         self.prev_element_visible = element.visible
         if self.sub_count % 10**7 == 0:
             self.ten_mil_count += 1
             self.sub_count = 0
+            tstart = time.perf_counter()
             for id in self.relevant_ids:
                 self.file_writer.write(id + '\n')
-            print('Type: {0} ID: {1}, Count: {2} Time: {3}, relevant_ids length: {4}'.format(type, element.id,
-                                    self.ten_mil_count*10**7, round(time.perf_counter()-t1), len(self.relevant_ids)))
+            print('Type: {0} ID: {1}, Count: {2} Time: {3} s, relevant_ids length: {4}, time to write to .txt: {5} s'.format(
+                type, element.id, self.ten_mil_count*10**7, round(time.perf_counter()-t1), len(self.relevant_ids),
+                round(time.perf_counter()-tstart, 4)))
             self.relevant_ids.clear()
             gc.collect()
 
@@ -49,7 +58,7 @@ reverted_data = True
 ###############################
 
 input_file = '/Users/dansvenonius/Desktop/history-230227.osm.pbf'
-#input_file = '/Users/dansvenonius/Desktop/test_element_history.xml'
+#input_file = '/Users/dansvenonius/Desktop/test_element_tags.xml'
 if reverted_data:
     input_user_data_file = '/Users/dansvenonius/Desktop/Preprocessing output/Reverted Data/user_data.csv'
     output_csv = '/Users/dansvenonius/Desktop/History output/Reverted Data/user_data_w_operations.csv'

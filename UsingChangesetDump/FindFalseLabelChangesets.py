@@ -8,7 +8,7 @@ def find_samples():
     reverted_cs_ids = pd.read_csv('/Users/dansvenonius/Desktop/Misc output/Reverted Data/reverted_changesets.csv').loc[:, 'reverted_id']
     ids_to_sample = set()
     while len(ids_to_sample) < reverted_cs_ids.size:
-        sample = np.random.randint(1, 133064137+1) #133064137 highest cs_id in file, 1 is the lowest cs_id.
+        sample = np.random.randint(10000000, 133064137+1) # we look at cs_ids with 8 or 9 digits for "revert" comments. This way we scan through the same.
         if sample not in reverted_cs_ids.values:
             ids_to_sample.add(sample)
     return ids_to_sample
@@ -27,7 +27,6 @@ class ChangesetHandler(osm.SimpleHandler):
 
 t1 = time.perf_counter()
 file = '/Users/dansvenonius/Desktop/changesets-230227.osm.bz2'
-#file = '/Users/dansvenonius/Desktop/test_changeset.xml'
 
 cs_handler = ChangesetHandler()
 cs_handler.apply_file(file)

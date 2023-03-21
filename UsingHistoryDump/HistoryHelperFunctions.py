@@ -58,10 +58,38 @@ def init_nested_user_dict(row):
             'modify': 0,
             'delete': 0,
             'contributions': 0,
-            'nkeywords': 0,
             'nprev_changesets': 0,
             'active_weeks': 0,
-            'account_created': ''}
+            'acc_created': '',
+            'create_nodes': 0,
+            'create_ways': 0,
+            'create_relations': 0,
+            'create_building': 0,
+            'create_source': 0,
+            'create_highway': 0,
+            'create_name': 0,
+            'create_natural': 0,
+            'create_surface': 0,
+            'create_landuse': 0,
+            'create_power': 0,
+            'create_waterway': 0,
+            'create_amenity': 0,
+            'create_service': 0,
+            'create_oneway': 0}
+    if 'create' in row:
+        d['create'] = row['create']
+    if 'modify' in row:
+        d['modify'] = row['modify']
+    if 'delete' in row:
+        d['delete'] = row['delete']
+    if 'contributions' in row:
+        d['contributions'] = row['contributions']
+    if 'create_nodes' in row:
+        d['create_nodes'] = row['create_nodes']
+    if 'create_ways' in row:
+        d['create_ways'] = row['create_ways']
+    if 'create_relations' in row:
+        d['create_relations'] = row['create_relations']
     if 'nprev_changesets' in row:
         d['nprev_changesets'] = row['nprev_changesets']
     if 'active_weeks' in row:
@@ -128,8 +156,15 @@ def determine_operation(prev_element_visible, curr_element_visible, version=0):
     return 'delete' if not curr_element_visible and prev_element_visible else 'modify'
 
 
-def nbr_keywords_added(prev_tags, curr_tags, KEYWORDS):
-    curr_keywords = {tag.k for tag in curr_tags if tag.k in KEYWORDS}
-    return len(curr_keywords) - len(curr_keywords.intersection({key for key in prev_tags.keys() if key in KEYWORDS}))
-
+def nbr_keywords_added(prev_tags, curr_tags):
+    if len(curr_tags) == 0:
+        return {}
+    nbr_tags = {}
+    for key, val in curr_tags.items():
+        if (key, val) not in prev_tags.items():
+            if key in nbr_tags.keys():
+                nbr_tags[key] += 1
+            else:
+                nbr_tags[key] = 1
+    return nbr_tags
 

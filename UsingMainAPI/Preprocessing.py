@@ -6,7 +6,7 @@ import MainAPIHelperFunctions
 api = osmapi.OsmApi()
 
 ########### INPUT ############
-reverted_data = True
+reverted_data = False
 ##############################
 
 if reverted_data:
@@ -19,22 +19,6 @@ else:
 cs_df = pd.read_csv(input_file)
 VALID_TAGS = MainAPIHelperFunctions.get_valid_tags()
 
-changeset_data = {'uid': 0,
-                  'id': 0,
-                  'create': 0,
-                  'modify': 0,
-                  'delete': 0,
-                  'edits': 0,
-                  'min_lon': 0,
-                  'max_lon': 0,
-                  'min_lat': 0,
-                  'max_lat': 0,
-                  'box_size': 0,
-                  'comment_len': 0,
-                  'created_at': 0,
-                  'imagery_used': False,
-                  'editor_app': 'other'}
-
 bad_ids = set()
 big_changeset_data = {}  # ready data
 big_node_create_dict, big_way_create_dict, big_relation_create_dict, big_user_dict = {}, {}, {}, {}  # to be processed further
@@ -42,7 +26,10 @@ big_node_dict, big_way_dict, big_relation_dict = {}, {}, {}  # to be processed f
 
 tstart = time.perf_counter()
 for idx, row in cs_df.iterrows():
-    id, cs_created_at = row['reverted_id'], row['reverted_created_at']
+    if reverted_data:
+        id, cs_created_at = row['reverted_id'], row['reverted_created_at']
+    else:
+        id, cs_created_at = row['cs_id'], row['created_at']
     if id in bad_ids:
         continue
     try:
@@ -52,7 +39,6 @@ for idx, row in cs_df.iterrows():
         bad_ids.add(id)
         continue
 
-    #print("\nParsing id: " + str(id))
     t1 = time.perf_counter()
     cs = api.ChangesetGet(id)
     osmchange = api.ChangesetDownload(id)
