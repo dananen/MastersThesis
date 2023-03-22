@@ -107,7 +107,7 @@ def osmchange_to_changeset_data(cs_id, cs_created_at, cs, osmchange_data, VALID_
         changeset_data[cs_object['action']] += 1
 
         if 'type' in cs_object.keys() and 'id' in cs_object['data'].keys() and 'version' in cs_object['data'].keys():
-            changeset_data['n' + cs_object['type'] + 's'] = cs_object['type']
+            changeset_data['n' + cs_object['type'] + 's'] += 1
             cs_object_data = cs_object['data']
             element_dict = {'cs_id': cs_id,
                             'uid': changeset_data['uid'],
