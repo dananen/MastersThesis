@@ -53,7 +53,7 @@ med ids som kan gå in i CLI-kommandot för att filtrera fram element.
 
 5. Kör osmiums CLI-verktyg för att plocka ut alla de element (nodes/ways/relations) som vi sedan måste jämföra med
 dess tidigare iterationer. Ett kommando (callat från desktop) som har funkat är:
-osmium getid ./history-230227.osm.pbf --id-file ./Misc\ output/CLI_element_ids.txt --with-history -o ./Misc\ output/relevant_reverted_elements.osm.pbf
+osmium getid ./history-230227.osm.pbf --id-file ./Misc\ output/Not\ Reverted\ Data/CLI_element_ids_for_history.txt --with-history -o ./Misc\ output/Not\ Reverted\ Data/relevant_reverted_elements.osm.pbf
 Input: History-filen, '/Users/dansvenonius/Desktop/history-230227.osm.pbf',
 ids från '/Users/dansvenonius/Desktop/Misc output/Reverted Data/CLI_element_ids_for_history.txt' (alt. Not Reverted Data)
 
@@ -62,8 +62,7 @@ ids från '/Users/dansvenonius/Desktop/Misc output/Reverted Data/CLI_element_ids
 
 6. Kör GetElementHistory.py på filen som steg 5 outputtade. Den kör igenom dessa element och tittar på tidigare iterationer
 för att få kontext på objektets historia, men framförallt kollar på föreågende version av elementet.
-Input: Filtrerade history-filen. '/Users/dansvenonius/Desktop/Misc output/Reverted Data/reverted_elements_history.osm.pbf'
-eller '/Users/dansvenonius/Desktop/Misc output/Not Reverted Data/not_reverted_elements_history.osm.pbf'.
+Input: Filtrerade history-filen. '/Users/dansvenonius/Desktop/Misc output/Reverted Data/relevant_reverted_elements.osm.pbf'
 Output: Elementen som inte var created i changesetet, och deras history, framförallt jämförelse med föregående iteration,
 från '/Users/dansvenonius/Desktop/History output/Reverted Data/elements_modifydelete_data.csv'. IDs för element vars tidigare
 iteration inte hittades i OSM kastas bort och deras ID samt typer läggs i
