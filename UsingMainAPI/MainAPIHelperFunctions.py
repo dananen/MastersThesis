@@ -118,8 +118,10 @@ def osmchange_to_changeset_data(cs_id, cs_created_at, cs, osmchange_data, VALID_
             if element_dict['version'] == 1:
                 tags = cs_object_data['tag']
                 element_dict['ntags'] = len(tags)
+                element_dict['tags_added'] = len(tags)
+                element_dict['tags_deleted'] = 0
                 element_dict['nvalid_tags'] = len([k for k, v in tags.items() if k in VALID_TAGS.keys() and v in VALID_TAGS[k]])
-                element_dict['nprev_tags'] = 0
+                #element_dict['nprev_tags'] = 0
                 element_dict['nprev_valid_tags'] = 0
                 element_dict['weeks_to_prev'] = 0
                 element_dict['name_changed'] = False

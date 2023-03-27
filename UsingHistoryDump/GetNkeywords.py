@@ -15,27 +15,27 @@ class UserHistoryHandler(osmium.SimpleHandler):
         self.prev_tag_keys = {}
         self.counter = 0
         self.ten_mil_counter = 0
+        self.prev_el_version = 0
+        self.prev_el_id = 0
 
     def process_element(self, element):
         self.counter += 1
-        if len(element.tags) > 0:
-            curr_tags = {tag.k: tag.v for tag in element.tags if tag.k in KEYWORDS}
-        else:
-            curr_tags = {}
-        if element.uid in self.user_data.keys():
+        curr_tags = {tag.k: tag.v for tag in element.tags if tag.k in KEYWORDS}
+        if len(curr_tags) > 0 and element.uid in self.user_data.keys():
             for user_cs_dict in self.user_data[element.uid].values():
-               if element.timestamp < user_cs_dict['cs_created_at']:
-                    if element.version == 1:
-                        self.prev_tag_keys.clear()
-                    for keyword, value in hhf.nbr_keywords_added(self.prev_tag_keys, curr_tags).items():
-                        user_cs_dict['create_' + keyword] += value
+                if element.timestamp >= user_cs_dict['cs_created_at']:
+                    continue
+                if not (element.version == self.prev_el_version+1 and self.prev_el_id == element.id):
+                    self.prev_tag_keys.clear()
+                for keyword, value in hhf.nbr_keywords_added(self.prev_tag_keys, curr_tags).items():
+                    user_cs_dict['create_' + keyword] += value
 
-        self.prev_tag_keys = curr_tags
+        self.prev_tag_keys, self.prev_el_version, self.prev_el_id = curr_tags, element.version, element.id
         if self.counter % 10**6 == 0:
             gc.collect()
             self.counter = 0
             self.ten_mil_counter += 1
-            print('Count: {0}, Time: {1}'.format(self.ten_mil_counter*10**6, round(time.perf_counter()-t1)))
+            print('ID: {0}, Count: {1}, Time: {2}'.format(element.id, self.ten_mil_counter*10**6, round(time.perf_counter()-t1)))
 
     def node(self, node):
         self.process_element(node)
@@ -52,12 +52,12 @@ reverted_data = True
 ###############################
 
 if reverted_data:
-    # 2.6 miljarder noder, 0.4 miljarder ways, 0.025 miljarder relations. ish 3 miljarder element.
-    # 110 sekunder per 1 miljon element ger 110*3000 = 4 dygn ish...
+    # 700 miljoner element, cirkus (277n, 428w, 20r)
     input_file = '/Users/dansvenonius/Desktop/Misc output/Reverted Data/elements_touched_by_users.osm.pbf'
     input_user_data = '/Users/dansvenonius/Desktop/History output/Reverted Data/user_data_w_operations.csv'
     output_csv = '/Users/dansvenonius/Desktop/History output/Reverted Data/user_data_final.csv'
 else:
+    # 1100 miljoner element, ungefär (215n, 872w, 26r)
     input_file = '/Users/dansvenonius/Desktop/Misc output/Not Reverted Data/elements_touched_by_users.osm.pbf'
     input_user_data = '/Users/dansvenonius/Desktop/History output/Not Reverted Data/user_data_w_operations.csv'
     output_csv = '/Users/dansvenonius/Desktop/History output/Not Reverted Data/user_data_final.csv'

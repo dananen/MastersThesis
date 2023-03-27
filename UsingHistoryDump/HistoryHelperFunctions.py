@@ -29,7 +29,9 @@ def init_nested_element_dict(element_type, df_row):
             'version': [df_row['version']],
             'operation': df_row['operation'],
             'ntags': 0,
-            'nprev_tags': 0,
+            #'nprev_tags': 0,
+            'tags_added': 0,
+            'tags_deleted': 0,
             'nvalid_tags': 0,
             'nprev_valid_tags': 0,
             'weeks_to_prev': 0,
@@ -119,9 +121,13 @@ def process_element_history(element_history, element_dicts):
         for i in range(min_idx+1):
             prev_auths.add(element_history[i]['author'])
 
+        tags_added = sum([1 if (key, value) not in prev_iteration['tags'].items() else 0 for key, value in last_changeset_iteration['tags'].items()])
+
         element_dict['version'] = max(element_dict['version'])
         element_dict['ntags'] = last_changeset_iteration['ntags']
-        element_dict['nprev_tags'] = prev_iteration['ntags']
+        element_dict['tags_added'] = tags_added
+        element_dict['tags_deleted'] = tags_added - (len(last_changeset_iteration['tags']) - len(prev_iteration['tags']))
+        #element_dict['nprev_tags'] = prev_iteration['ntags']
         element_dict['nvalid_tags'] = last_changeset_iteration['nvalid_tags']
         element_dict['nprev_valid_tags'] = prev_iteration['nvalid_tags']
         element_dict['weeks_to_prev'] = (last_changeset_iteration['timestamp'] - prev_iteration['timestamp']).total_seconds()/(60*60*24*7)
@@ -138,14 +144,16 @@ def process_element_iteration(element, reverted_versions, VALID_TAGS):
         element_iteration['timestamp'] = element.timestamp
         tags = element.tags
         element_iteration['ntags'] = len(tags)
-        valid_tags, names = 0, {}
+        valid_tags, tags_dict, names = 0, {}, {}
         for tag in tags:
             key, value = tag.k, tag.v
+            tags_dict[key] = value
             if 'name' in key:
                 names[key] = value
             if key in VALID_TAGS.keys() and value in VALID_TAGS[key]:
                 valid_tags += 1
         element_iteration['names'] = names
+        element_iteration['tags'] = tags_dict
         element_iteration['nvalid_tags'] = valid_tags
     return element_iteration
 

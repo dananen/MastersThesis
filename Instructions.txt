@@ -56,6 +56,7 @@ dess tidigare iterationer. Ett kommando (callat från desktop) som har funkat ä
 osmium getid ./history-230227.osm.pbf --id-file ./Misc\ output/Not\ Reverted\ Data/CLI_element_ids_for_history.txt --with-history -o ./Misc\ output/Not\ Reverted\ Data/relevant_reverted_elements.osm.pbf
 Input: History-filen, '/Users/dansvenonius/Desktop/history-230227.osm.pbf',
 ids från '/Users/dansvenonius/Desktop/Misc output/Reverted Data/CLI_element_ids_for_history.txt' (alt. Not Reverted Data)
+Output: Element som någon av våra användare har rört, '/Users/dansvenonius/Desktop/Misc output/Reverted Data/relevant_reverted_elements.osm.pbf'
 
 
 
@@ -97,18 +98,29 @@ fram alla element som våra användare har rört. (alt för Not Reverted Data)
 
 
 
-9. Kör osmiums CLI-verktyg igen, för att plocka ut nya element, som är alla dem element som har rörts av minst en av
+9. OBS! Detta behöver bara köras en gång. Sedan kan filen återanvändas. Kör osmiums CLI-verktyg för att filtrera på tags.
+Följande kommando plockar ut alla nodes, ways och relations som har minst ett av våra 12 keywords. Ett kommando som funkat är:
+osmium tags-filter ./history-230227.osm.pbf nwr/building nwr/source nwr/highway nwr/name nwr/natural nwr/surface nwr/landuse nwr/power nwr/waterway nwr/amenity nwr/service nwr/oneway -o ./tag_filtered_history.osm.pbf --progress --omit-referenced
+Input: OSM history-fil, '/Users/dansvenonius/Desktop/history-230227.osm.pbf'
+Output: OSM history-fil, bara med versioner som har minst en av dessa taggar i sig: '/Users/dansvenonius/Desktop/tag_filtered_history.osm.pbf'
+
+
+
+
+
+10. Kör osmiums CLI-verktyg igen, för att plocka ut nya element, som är alla dem element som har rörts av minst en av
 de användare vi är intresserade av. Ett kommando som har funkat är:
-osmium getid ./history-230227.osm.pbf --id-file ./History\ output/Reverted\ Data/CLI_element_ids_for_nkeywords.txt --with-history -o ./Misc\ output/Reverted\ Data/elements_touched_by_users.osm.pbf
+osmium getid ./tag_filtered_history.osm.pbf --id-file ./History\ output/Reverted\ Data/CLI_element_ids_for_nkeywords.txt --with-history -o ./Misc\ output/Reverted\ Data/elements_touched_by_users_and_tags_filtered.osm.pbf
 Input: Text-fil för filtrering, '/Users/dansvenonius/Desktop/History output/Reverted Data/CLI_element_ids_for_nkeywords.txt'
-samt stora history-filen '/Users/dansvenonius/Desktop/history-230227.osm.pbf'.
-Output: Filtrerad history-fil. '/Users/dansvenonius/Desktop/Misc output/Reverted Data/elements_touched_by_users.osm.pbf'
+samt stora tag-filtrerade history-filen '/Users/dansvenonius/Desktop/tag_filtered_history.osm.pbf'.
+Output: Filtrerad history-fil, med element med rätt tags och som rörts av relevanta användare,
+'/Users/dansvenonius/Desktop/Misc output/Reverted Data/elements_touched_by_users_and_tags_filtered.osm.pbf'
 
 
 
 
 
-10. Med outputten från steg 9, kör GetNkeywords.py. Den plockar ut alla gånger en användare för ett changeset har
+11. Med outputten från steg 10, kör GetNkeywords.py. Den plockar ut alla gånger en användare för ett changeset har
 använt någon av de 12 vanligaste taggarna (nycklarna alltså) i OSM, alltså ett mått på hur mycket OSM-convention som
 används. Detta är det sista steget där vi hämtar data.
 Input: Filtrerad history med alla element som rörts av minst en användare vi är intresserade av,
@@ -119,10 +131,10 @@ Output: En ny CSV-fil med ifylld kolonn för nkeywords i
 
 
 
-11. Eventuellt kombinera olika CSV-filer.
+12. Eventuellt kombinera olika CSV-filer.
 
 
 
 
-12. När båda dataseten är klappade och klara, skapa en stor CSV-fil med två kolonner för dels changeset_id och dels
+13. När båda dataseten är klappade och klara, skapa en stor CSV-fil med två kolonner för dels changeset_id och dels
 true/false label.
