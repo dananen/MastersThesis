@@ -2,12 +2,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import os
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.manifold import TSNE
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.inspection import permutation_importance
+from sklearn.neural_network import MLPClassifier
 
 
 def split_classes(data_df, labels, with_label=False):
@@ -152,6 +153,23 @@ def make_histograms(save_data, ltitle, rtitle, cs_data=None, u_data=None, el_dat
                            ylog=setting['ylog'], categorical=setting['categorical'])
 
 
+def prep_unsplitted_data(labels, csdf=None, udf=None, eldf=None, to_numpy=True):
+    prep_eldf = None
+    prep_labels = labels.sample(frac=1)
+    if csdf is not None:
+        prep_csdf = prep_df(csdf.loc[prep_labels.index, :].reindex(prep_labels.index), 'changeset', to_numpy=to_numpy)
+    if udf is not None:
+        prep_udf = prep_df(udf.loc[prep_labels.index, :].reindex(prep_labels.index), 'user', to_numpy=to_numpy)
+    if eldf is not None:
+        ## TODO. No support yet
+        raise Exception("eldf Not supported yet")
+        #train_eldf, test_eldf = split_train_test_df(eldf, 'element', train_ids, test_ids, add_split_label=add_split_label, prep_data=prep_data)
+
+    prep_labels = prep_df(labels, 'labels', to_numpy=to_numpy)
+
+    return (prep_labels, prep_csdf, prep_udf, prep_eldf)
+
+
 def split_train_test_df(df, type, train_ids, test_ids, add_split_label=False, prep_data=False, to_numpy=False):
     if add_split_label:
         df['split'] = np.where(df['cs_id'].isin(train_ids['cs_id']), 'train', 'test')
@@ -185,10 +203,23 @@ def split_train_test(labels, csdf=None, udf=None, eldf=None, test_size=0.3, add_
         train_ids = prep_df(train_ids, 'labels', to_numpy=to_numpy)
         test_ids = prep_df(test_ids, 'labels', to_numpy=to_numpy)
 
-    return train_ids, train_csdf, train_udf, train_eldf, test_ids, test_csdf, test_udf, test_eldf
+    return (train_ids, train_csdf, train_udf, train_eldf), (test_ids, test_csdf, test_udf, test_eldf)
+
+def split_train_test_validation(labels, csdf=None, udf=None, eldf=None, train_size=0.6, test_size=0.2, validation_size=0.2, add_split_label=False, prep_data=False, to_numpy=False):
+    train, testval = split_train_test(labels, csdf=csdf, udf=udf, eldf=eldf,
+                                      test_size=test_size+validation_size, add_split_label=add_split_label, prep_data=False, to_numpy=False)
+    val, test = split_train_test(testval[0], csdf=testval[1], udf=testval[2], eldf=testval[3],
+                                 test_size=test_size/(test_size + validation_size), add_split_label=add_split_label, prep_data=prep_data, to_numpy=to_numpy)
+    if prep_data:
+        train = prep_df(train[0], 'labels', to_numpy=to_numpy), prep_df(train[1], 'changeset', to_numpy=to_numpy),\
+            prep_df(train[2], 'user', to_numpy=to_numpy), prep_df(train[3], 'element', to_numpy=to_numpy)
+    return train, test, val
 
 
-def prep_df(df, type, keep_csids=False, trim_only_csids=False, to_numpy=False):
+def prep_df(df, type, keep_csids=False, trim_only_csids=False, to_numpy=False, exclude_osmgo=True):
+
+    if df is None:
+        return None
 
     if type.lower() == "labels":
         to_trim = []
@@ -218,23 +249,28 @@ def prep_df(df, type, keep_csids=False, trim_only_csids=False, to_numpy=False):
         raise Exception("Type has to be 'changeset', 'user', 'element' or 'labels'.")
 
     prepped = df.copy()
+    if type == 'changeset' and exclude_osmgo:
+        prepped.loc[:, 'editor_app'].replace('osm go!', 'other', inplace=True)
     if trim_only_csids:
         del prepped['cs_id']
-        return prepped.to_numpy() if to_numpy else prepped
+    else:
+        prepped = prepped.loc[:, ~prepped.columns.isin(to_trim)]
+        for var in categoricals:
+            if var in binary_cat:
+                prepped.loc[:, var] = np.where(prepped.loc[:, var] == True, 1, 0)
+            else:
+                encoder = OneHotEncoder()
+                encoded_df = pd.DataFrame(encoder.fit_transform(prepped[[var]]).toarray())
+                encoded_df.index = prepped.index
+                encoded_df.columns = encoder.get_feature_names_out()
+                prepped = pd.concat([prepped, encoded_df], axis=1)
+                del prepped[var]
 
-    prepped = prepped.loc[:, ~prepped.columns.isin(to_trim)]
-    for var in categoricals:
-        if var in binary_cat:
-            prepped.loc[:, var] = np.where(prepped.loc[:, var] == True, 1, 0)
-        else:
-            encoder = OneHotEncoder()
-            encoded_df = pd.DataFrame(encoder.fit_transform(prepped[[var]]).toarray())
-            encoded_df.index = prepped.index
-            encoded_df.columns = encoder.get_feature_names_out()
-            prepped = pd.concat([prepped, encoded_df], axis=1)
-            del prepped[var]
-
-    return prepped.to_numpy() if to_numpy else prepped
+    if to_numpy:
+        prepped = prepped.to_numpy()
+        if type == 'labels':
+            prepped = prepped.ravel()
+    return prepped
 
 
 def tSNEplot(labels, csdf=None, udf=None, eldf=None):
@@ -272,25 +308,13 @@ def tSNEplot(labels, csdf=None, udf=None, eldf=None):
     plt.title(title + " data")
     plt.show()
 
-def random_forest(train_labels, test_labels, train_data, test_data, print_report=True, rfc=None):
-    if rfc is None:
-        rfc = RandomForestClassifier(n_estimators=100, max_depth=15, max_features=6, min_samples_leaf=2)
-    rfc.fit(train_data, train_labels.ravel())
-    pred_train = rfc.predict(train_data)
-    pred_test = rfc.predict(test_data)
-    if print_report:
-        print('######################## REPORT FOR TRAINING DATA ###########################')
-        print(classification_report(train_labels, pred_train, target_names=['Not Reverted', 'Reverted']))
-        print('########################## REPORT FOR TEST DATA #############################')
-        print(classification_report(test_labels, pred_test, target_names=['Not Reverted', 'Reverted']))
-    return rfc
 
 def get_feature_names(cs=True, u=True, el=False):
     names = []
     if cs:
         for feature in ['create', 'modify', 'delete', 'edits', 'nnodes', 'nways', 'nrelations',
                         'min_lon', 'max_lon', 'min_lat', 'max_lat', 'box_size', 'comment_len',
-                        'imagery_used', 'editor_app_go map!!', 'editor_app_josm', 'editor_app_osm go!',
+                        'imagery_used', 'editor_app_go map!!', 'editor_app_josm',  # 'editor_app_osm go!',
                         'editor_app_other', 'editor_app_potlatch', 'editor_app_streetcomplete', 'editor_app_vespucci']:
             names.append(feature)
     if u:
@@ -304,9 +328,40 @@ def get_feature_names(cs=True, u=True, el=False):
             names.append(feature)
     return names
 
-def rfc_importances(X_test, y_test, rfc, cs=True, u=True, el=False):
-    importances = rfc.feature_importances_
-    std = np.std([tree.feature_importances_ for tree in rfc.estimators_], axis=0)
+
+def random_forest(y_train, y_test, X_train, X_test, print_report=True, model=None):
+    if model is None:
+        model = RandomForestClassifier(n_estimators=100, max_depth=15, max_features=6, min_samples_leaf=2)
+    model.fit(X_train, y_train.ravel())
+    pred_train = model.predict(X_train)
+    pred_test = model.predict(X_test)
+
+    if print_report:
+        fig, ax = plt.subplots(1, 2, sharey='row')
+        print('######################## RANDOM FOREST REPORT FOR TRAINING DATA ###########################')
+        print(classification_report(y_train, pred_train, target_names=['Not Reverted', 'Reverted']))
+        cmd = ConfusionMatrixDisplay(confusion_matrix(y_train, pred_train, normalize='all'), display_labels=['Not Reverted', 'Reverted']).plot(ax=ax[0])
+        cmd.im_.colorbar.remove()
+        cmd.ax_.set_xlabel('')
+        ax[0].set_title('Training data')
+        print('########################## RANDOM FOREST REPORT FOR TEST DATA #############################')
+        print(classification_report(y_test, pred_test, target_names=['Not Reverted', 'Reverted']))
+        cmd = ConfusionMatrixDisplay(confusion_matrix(y_test, pred_test, normalize='all'), display_labels=['Not Reverted', 'Reverted']).plot(ax=ax[1])
+        cmd.im_.colorbar.remove()
+        cmd.ax_.set_xlabel('')
+        cmd.ax_.set_ylabel('')
+        ax[1].set_title('Test data')
+        fig.text(0.4, 0.1, 'Predicted label', ha='left')
+        plt.tight_layout()
+        fig.suptitle("Random Forest Classification")
+        plt.show()
+
+    return model
+
+
+def rfc_importances(X_test, y_test, model, cs=True, u=True, el=False):
+    importances = model.feature_importances_
+    std = np.std([tree.feature_importances_ for tree in model.estimators_], axis=0)
 
     forest_importances = pd.Series(importances)
     fig, ax = plt.subplots(2, 1, sharex='all')
@@ -324,6 +379,53 @@ def rfc_importances(X_test, y_test, rfc, cs=True, u=True, el=False):
     ax[1].set_title("Permutation importance")
     fig.tight_layout()
     fig.show()
+
+def ann_classification(y_train, y_test, X_train, X_test, print_report=True, model=None):
+    if model is None:
+        model = MLPClassifier(
+            hidden_layer_sizes=(100, 100, 100, 100),
+            alpha=0.0001,  # L2 regularization
+            batch_size='auto',  # auto = min(200, n_samples)
+            learning_rate_init=0.001,
+            learning_rate='constant',
+            max_iter=200,
+            tol=0.0001,
+            early_stopping=True,
+            validation_fraction=0.3
+        )
+
+    model.fit(X_train, y_train)
+    pred_test = model.predict(X_test)
+    pred_train = model.predict(X_train)
+
+    if print_report:
+        fig, ax = plt.subplots(1, 2, sharey='row')
+        print('######################## ANN REPORT FOR TRAINING DATA ###########################')
+        print(classification_report(y_train, pred_train, target_names=['Not Reverted', 'Reverted']))
+        cmd = ConfusionMatrixDisplay(confusion_matrix(y_train, pred_train, normalize='all'), display_labels=['Not Reverted', 'Reverted']).plot(ax=ax[0])
+        cmd.im_.colorbar.remove()
+        cmd.ax_.set_xlabel('')
+        ax[0].set_title('Training data')
+        print('########################## ANN REPORT FOR TEST DATA #############################')
+        print(classification_report(y_test, pred_test, target_names=['Not Reverted', 'Reverted']))
+        cmd = ConfusionMatrixDisplay(confusion_matrix(y_test, pred_test, normalize='all'), display_labels=['Not Reverted', 'Reverted']).plot(ax=ax[1])
+        cmd.im_.colorbar.remove()
+        cmd.ax_.set_xlabel('')
+        cmd.ax_.set_ylabel('')
+        ax[1].set_title('Test data')
+        fig.text(0.4, 0.1, 'Predicted label', ha='left')
+        plt.tight_layout()
+        fig.suptitle('ANN Classification')
+        plt.show()
+
+    return model
+
+def grid_search_cv(model, param_grid, X, y):
+    gscv = GridSearchCV(model, param_grid=param_grid, scoring='f1', cv=5, n_jobs=-1, verbose=2)
+    gscv.fit(X, y)
+    print(gscv.best_params_)
+    print(gscv.best_score_)
+    print(gscv.cv_results_)
 
 
 
