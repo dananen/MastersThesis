@@ -156,85 +156,20 @@ def make_histograms(save_data, ltitle, rtitle, cs_data=None, u_data=None, el_dat
                            ylog=setting['ylog'], categorical=setting['categorical'])
 
 
-def prep_unsplitted_data(labels, csdf=None, udf=None, eldf=None, to_numpy=True, one_hot=True):
-    prep_eldf = None
-    prep_labels = labels.sample(frac=1)
-    if csdf is not None:
-        prep_csdf = prep_df(csdf.loc[prep_labels.index, :].reindex(prep_labels.index), 'changeset', to_numpy=to_numpy, one_hot=one_hot)
-    if udf is not None:
-        prep_udf = prep_df(udf.loc[prep_labels.index, :].reindex(prep_labels.index), 'user', to_numpy=to_numpy, one_hot=one_hot)
-    if eldf is not None:
-        ## TODO. No support yet
-        raise Exception("eldf Not supported yet")
-        #train_eldf, test_eldf = split_train_test_df(eldf, 'element', train_ids, test_ids, add_split_label=add_split_label, prep_data=prep_data)
-
-    prep_labels = prep_df(labels, 'labels', to_numpy=to_numpy, one_hot=one_hot)
-
-    return (prep_labels, prep_csdf, prep_udf, prep_eldf)
-
-
-def split_train_test_df(df, type, train_ids, test_ids, add_split_label=False, prep_data=False, to_numpy=False, one_hot=True):
-    if add_split_label:
-        df['split'] = np.where(df['cs_id'].isin(train_ids['cs_id']), 'train', 'test')
-    if type == "element":
-        raise Exception("eldf not supported yet")
-        ## TODO. antingen fixa så att de är sorterade i cs_ids, eller göra en vektor av matriser? Dock har matriserna olika storlek?
-        #train_df = df.loc[train_ids.index, :].reindex(train_ids.index)
-        #test_df = df.loc[test_ids.index, :].reindex(test_ids.index)
-    else:
-        train_df = df.loc[train_ids.index, :].reindex(train_ids.index)
-        test_df = df.loc[test_ids.index, :].reindex(test_ids.index)
-
-    if prep_data:
-        train_df = prep_df(train_df, type, to_numpy=to_numpy, one_hot=one_hot)
-        test_df = prep_df(test_df, type, to_numpy=to_numpy, one_hot=one_hot)
-    return train_df, test_df
-
-def split_train_test(labels, csdf=None, udf=None, eldf=None, test_size=0.3, add_split_label=False, prep_data=False, to_numpy=False, one_hot=True):
-    train_ids, test_ids = train_test_split(labels, test_size=test_size)
-    train_csdf, train_udf, train_eldf, test_csdf, test_udf, test_eldf = None, None, None, None, None, None
-
-    if csdf is not None:
-        train_csdf, test_csdf = split_train_test_df(csdf, 'changeset', train_ids, test_ids, add_split_label=add_split_label, prep_data=prep_data, to_numpy=to_numpy, one_hot=one_hot)
-    if udf is not None:
-        train_udf, test_udf = split_train_test_df(udf, 'user', train_ids, test_ids, add_split_label=add_split_label, prep_data=prep_data, to_numpy=to_numpy, one_hot=one_hot)
-    if eldf is not None:
-        ## TODO. No support yet
-        raise Exception("eldf Not supported yet")
-        #train_eldf, test_eldf = split_train_test_df(eldf, 'element', train_ids, test_ids, add_split_label=add_split_label, prep_data=prep_data)
-    if prep_data:
-        train_ids = prep_df(train_ids, 'labels', to_numpy=to_numpy, one_hot=one_hot)
-        test_ids = prep_df(test_ids, 'labels', to_numpy=to_numpy, one_hot=one_hot)
-
-    return (train_ids, train_csdf, train_udf, train_eldf), (test_ids, test_csdf, test_udf, test_eldf)
-
-def split_train_test_validation(labels, csdf=None, udf=None, eldf=None, train_size=0.6, test_size=0.2, validation_size=0.2, add_split_label=False,
-                                prep_data=False, to_numpy=False, one_hot=True):
-    if train_size + test_size + validation_size != 1.0:
-        raise Exception("train + test + validation != 1!")
-    train, testval = split_train_test(labels, csdf=csdf, udf=udf, eldf=eldf,
-                                      test_size=test_size+validation_size, add_split_label=add_split_label, prep_data=False, to_numpy=False, one_hot=one_hot)
-    val, test = split_train_test(testval[0], csdf=testval[1], udf=testval[2], eldf=testval[3],
-                                 test_size=test_size/(test_size + validation_size), add_split_label=add_split_label, prep_data=prep_data, to_numpy=to_numpy, one_hot=one_hot)
-    if prep_data:
-        train = prep_df(train[0], 'labels', to_numpy=to_numpy, one_hot=one_hot), prep_df(train[1], 'changeset', to_numpy=to_numpy, one_hot=one_hot),\
-            prep_df(train[2], 'user', to_numpy=to_numpy, one_hot=one_hot), prep_df(train[3], 'element', to_numpy=to_numpy, one_hot=one_hot)
-    return train, test, val
-
 
 def get_prepped_csudf(path, to_numpy=False, multi_label=False, multi_file=None):
     if (multi_label and multi_file is None) or (not multi_label and multi_file is not None):
         raise Exception("either none or both of multi_label and multi_file must be used.")
 
     csdf = pd.read_csv(path + 'prepped_changeset_data.csv').set_index("cs_id")
-    csdf.drop(labels=['uid', 'created_at'], axis='columns', inplace=True)
+    csdf.drop(labels=['created_at'], axis='columns', inplace=True)
 
     udf = pd.read_csv(path + "user_data.csv").set_index("cs_id")
     udf.drop(labels=['cs_created_at', 'uid', 'acc_created'], axis='columns', inplace=True)
 
     if multi_label:
         labels = pd.read_csv(path + multi_file).set_index('cs_id')
-        label_names = ['full_revert', 'partial_revert', 'not_revert']
+        label_names = ['full_revert', 'partial_revert', 'non_revert']
     else:
         labels = pd.read_csv(path + 'labels.csv').set_index('cs_id')
         label_names = ['label']
@@ -244,7 +179,10 @@ def get_prepped_csudf(path, to_numpy=False, multi_label=False, multi_file=None):
         return labels_features.drop(labels=label_names, axis='columns'), labels_features.loc[:, label_names]
     else:
         labels_features.reset_index(inplace=True)
-        return labels_features.drop(labels=label_names + ["cs_id"], axis='columns').to_numpy(), labels_features[label_names].to_numpy().argmax(axis=1)
+        y = labels_features[label_names].to_numpy()
+        if multi_label:
+            y = y.argmax(axis=1)
+        return labels_features.drop(labels=label_names + ["cs_id"], axis='columns').to_numpy(), y
 
 
 def prep_df(df, type, keep_csids=False, trim_only_csids=False, to_numpy=False, one_hot=True, exclude_osmgo=True):
@@ -428,18 +366,27 @@ def mlp_classification(y_train, y_test, X_train, X_test, report=True, model=None
         shap.summary_plot(shap_values, X_train_mlp)
     return model
 
-def print_report(pred_train, y_train, pred_test, y_test, target_names, title="", normalize=True):
+def print_report(pred_train, y_train, pred_test, y_test, target_names=None, title="", normalize=True):
     norm = 'all' if normalize else None
+
     fig, ax = plt.subplots(1, 2, sharey='row')
     print('######################## TRAINING DATA ###########################')
-    print(classification_report(y_train, pred_train, target_names=target_names))
-    cmd = ConfusionMatrixDisplay(confusion_matrix(y_train, pred_train, normalize=norm), display_labels=target_names).plot(ax=ax[0], cmap='Greens')
+    if target_names is not None:
+        print(classification_report(y_train, pred_train, target_names=target_names))
+        cmd = ConfusionMatrixDisplay(confusion_matrix(y_train, pred_train, normalize=norm), display_labels=target_names).plot(ax=ax[0], cmap='Greens')
+    else:
+        print(classification_report(y_train, pred_train))
+        cmd = ConfusionMatrixDisplay(confusion_matrix(y_train, pred_train, normalize=norm)).plot(ax=ax[0], cmap='Greens')
     cmd.im_.colorbar.remove()
     cmd.ax_.set_xlabel('')
     ax[0].set_title('Training data')
     print('########################## TEST DATA #############################')
-    print(classification_report(y_test, pred_test, target_names=target_names))
-    cmd = ConfusionMatrixDisplay(confusion_matrix(y_test, pred_test, normalize=norm), display_labels=target_names).plot(ax=ax[1], cmap='Greens')
+    if target_names is not None:
+        print(classification_report(y_test, pred_test, target_names=target_names))
+        cmd = ConfusionMatrixDisplay(confusion_matrix(y_test, pred_test, normalize=norm), display_labels=target_names).plot(ax=ax[1], cmap='Greens')
+    else:
+        print(classification_report(y_test, pred_test))
+        cmd = ConfusionMatrixDisplay(confusion_matrix(y_test, pred_test, normalize=norm)).plot(ax=ax[1], cmap='Greens')
     cmd.im_.colorbar.remove()
     cmd.ax_.set_xlabel('')
     cmd.ax_.set_ylabel('')
@@ -462,9 +409,9 @@ def grid_search_cv(model, param_grid, X_train, y_train, X_test, y_test, scoring=
 
 
 def get_2_of_3_classes(path, c1, c2, multi_file, to_numpy=False):
-    poss_labels = ['full_revert', 'partial_revert', 'not_revert']
+    poss_labels = ['full_revert', 'partial_revert', 'non_revert']
     if c1 not in poss_labels or c2 not in poss_labels:
-        raise Exception("c1 or c2 whack! One is not in 'full_revert', 'partial_revert', 'not_revert'")
+        raise Exception("c1 or c2 whack! One is not in 'full_revert', 'partial_revert', 'non_revert'")
 
     X, y = get_prepped_csudf(path, to_numpy=False, multi_label=True, multi_file=multi_file)
     Xy = y.join(X)
@@ -477,7 +424,7 @@ def get_2_of_3_classes(path, c1, c2, multi_file, to_numpy=False):
 
     X = pd.concat([X_c1, X_c2])
     y = X[c1]
-    X = X.drop(labels=['not_revert', 'partial_revert', 'full_revert'], axis=1)
+    X = X.drop(labels=['non_revert', 'partial_revert', 'full_revert'], axis=1)
 
     if to_numpy:
         y = y.to_numpy()
@@ -485,10 +432,28 @@ def get_2_of_3_classes(path, c1, c2, multi_file, to_numpy=False):
     return X, y
 
 
+def find_first_el_index(df, first_el_var='version'):
+    for i, col in enumerate(df.columns):
+        if first_el_var + '_0' == col:
+            return i
+    return -1
 
+def add_experience(df, variable, threshold):
+    df['experience'] = df[variable] > threshold
+    return df
 
-
-
+def get_by_id(path, id, ovid_data=False, original_data=False):
+    if ovid_data:
+        X = pd.read_csv(path + 'ovid_data.csv').set_index('cs_id')
+        y = pd.read_csv(path + 'labels.csv').set_index('cs_id')
+        if original_data:
+            X.drop(columns=['nprev_changesets', 'imagery_used'], inplace=True)
+        else:
+            X.drop(columns='acc_created', inplace=True)
+    else:
+        X, y = get_prepped_csudf(path)
+    _, _, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    return X.loc[id, :].to_numpy(), y.loc[id, 'label'], id in y_test.index
 
 
 
