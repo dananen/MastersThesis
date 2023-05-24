@@ -12,6 +12,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.inspection import permutation_importance
 from sklearn.neural_network import MLPClassifier
+import plotly.express as px
+import json
+from Ovid.util import parse_timestamp_feature
 
 
 def split_classes(data_df, labels, with_label=False):
@@ -162,26 +165,26 @@ def get_prepped_csudf(path, to_numpy=False, multi_label=False, multi_file=None):
         raise Exception("either none or both of multi_label and multi_file must be used.")
 
     csdf = pd.read_csv(path + 'prepped_changeset_data.csv').set_index("cs_id")
-    csdf.drop(labels=['created_at'], axis='columns', inplace=True)
-
     udf = pd.read_csv(path + "user_data.csv").set_index("cs_id")
-    udf.drop(labels=['cs_created_at', 'uid', 'acc_created'], axis='columns', inplace=True)
-
     if multi_label:
         labels = pd.read_csv(path + multi_file).set_index('cs_id')
         label_names = ['full_revert', 'partial_revert', 'non_revert']
     else:
         labels = pd.read_csv(path + 'labels.csv').set_index('cs_id')
         label_names = ['label']
+
     features = csdf.join(udf, how='left')
     labels_features = labels.join(features, how='left')
+    # labels_features.drop_duplicates(inplace=True)
+    labels_features.drop(columns=['created_at', 'cs_created_at', 'uid', 'nprev_changesets'], inplace=True)
+    labels_features.loc[:, 'acc_created'] = labels_features['acc_created'].apply(parse_timestamp_feature)
+
     if not to_numpy:
-        return labels_features.drop(labels=label_names, axis='columns'), labels_features.loc[:, label_names]
+        return labels_features.drop(labels=label_names, axis='columns'), labels_features.loc[:, label_names].squeeze()
     else:
         labels_features.reset_index(inplace=True)
         y = labels_features[label_names].to_numpy()
-        if multi_label:
-            y = y.argmax(axis=1)
+        y = y.argmax(axis=1) if multi_label else y.ravel()
         return labels_features.drop(labels=label_names + ["cs_id"], axis='columns').to_numpy(), y
 
 
@@ -242,40 +245,20 @@ def prep_df(df, type, keep_csids=False, trim_only_csids=False, to_numpy=False, o
     return prepped
 
 
-def tSNEplot(labels, csdf=None, udf=None, eldf=None):
-    if eldf is not None:
-        raise Exception("No support for eldf yet.")
-    if csdf is None and udf is None and eldf is None:
-        raise Exception("Need at least one of csdf, udf or eldf (not now) to perform analysis.")
-
-    title = 't-SNE for '
-    data = []
-    if csdf is not None:
-        rev_csdf, nonrev_csdf = split_classes(csdf, labels)
-        data.append((prep_df(rev_csdf, 'changeset', to_numpy=True), prep_df(nonrev_csdf, 'changeset', to_numpy=True)))
-        title += 'changeset + '
-    if udf is not None:
-        rev_udf, nonrev_udf = split_classes(udf, labels)
-        data.append((prep_df(rev_udf, 'user', to_numpy=True), prep_df(nonrev_udf, 'user', to_numpy=True)))
-        title += 'user'
-    if eldf is not None:
-        ### TODO. No support for this yet
-        #rev_eldf, nonrev_eldf = split_classes(eldf, labels)
-        pass
-
-    for i, (rev, nonrev) in enumerate(data):
-        if i == 0:
-            rev_data, nonrev_data = rev, nonrev
-        else:
-            rev_data, nonrev_data = np.hstack((rev_data, rev)), np.hstack((nonrev_data, nonrev))
-
+def tSNEplot(X, y):
+    X.set_index('cs_id', inplace=True)
+    y.set_index('cs_id', inplace=True)
+    Xy = y.join(X)
     tsne = TSNE()
-    rev_tsne, nonrev_tsne = tsne.fit_transform(rev_data), tsne.fit_transform(nonrev_data)
-    plt.scatter(rev_tsne[:, 0], rev_tsne[:, 1], color='red', label='reverted', alpha=0.5)
-    plt.scatter(nonrev_tsne[:, 0], nonrev_tsne[:, 1], color='blue', label='not reverted', alpha=0.5)
-    plt.legend()
-    plt.title(title + " data")
-    plt.show()
+    rev_tsne = tsne.fit_transform(Xy.loc[Xy['label'] == True, Xy.columns != 'label'])
+    rev_tsne = np.hstack((rev_tsne, np.ones((rev_tsne.shape[0], 1), dtype=bool)))
+    nonrev_tsne = tsne.fit_transform(Xy.loc[Xy['label'] == False, Xy.columns != 'label'])
+    nonrev_tsne = np.hstack((nonrev_tsne, np.zeros((nonrev_tsne.shape[0], 1), dtype=bool)))
+    tsne_data = np.vstack((rev_tsne, nonrev_tsne))
+    tsne_df = pd.DataFrame(tsne_data, columns=['tsne_x', 'tsne_y', 'label'])
+    tsne_df.loc[:, 'label'].replace([0, 1], ['Not reverted', 'Reverted'], inplace=True)
+    px.scatter(tsne_df, x='tsne_x', y='tsne_y', color='label', width=1000, height=500).show()
+
 
 
 def get_feature_names(cs=True, u=True, el=False):
@@ -366,21 +349,29 @@ def mlp_classification(y_train, y_test, X_train, X_test, report=True, model=None
         shap.summary_plot(shap_values, X_train_mlp)
     return model
 
-def print_report(pred_train, y_train, pred_test, y_test, target_names=None, title="", normalize=True):
+def print_report(pred_train, y_train, pred_test, y_test, target_names=None, title="", normalize=True, print_train=True,
+                 clf_title_train='', clf_title_test=''):
     norm = 'all' if normalize else None
+    clf_title_train = '################## TRAINING DATA ##################' if clf_title_train == '' else clf_title_train
+    clf_title_test = '################## TEST DATA ##################' if clf_title_test == '' else clf_title_test
 
+    if title != "":
+        print(f'########################## {title} #############################')
     fig, ax = plt.subplots(1, 2, sharey='row')
-    print('######################## TRAINING DATA ###########################')
-    if target_names is not None:
-        print(classification_report(y_train, pred_train, target_names=target_names))
-        cmd = ConfusionMatrixDisplay(confusion_matrix(y_train, pred_train, normalize=norm), display_labels=target_names).plot(ax=ax[0], cmap='Greens')
-    else:
-        print(classification_report(y_train, pred_train))
-        cmd = ConfusionMatrixDisplay(confusion_matrix(y_train, pred_train, normalize=norm)).plot(ax=ax[0], cmap='Greens')
-    cmd.im_.colorbar.remove()
-    cmd.ax_.set_xlabel('')
-    ax[0].set_title('Training data')
-    print('########################## TEST DATA #############################')
+
+    if print_train:
+        print(clf_title_train)
+        if target_names is not None:
+            print(classification_report(y_train, pred_train, target_names=target_names))
+            cmd = ConfusionMatrixDisplay(confusion_matrix(y_train, pred_train, normalize=norm), display_labels=target_names).plot(ax=ax[0], cmap='Greens')
+        else:
+            print(classification_report(y_train, pred_train))
+            cmd = ConfusionMatrixDisplay(confusion_matrix(y_train, pred_train, normalize=norm)).plot(ax=ax[0], cmap='Greens')
+        cmd.im_.colorbar.remove()
+        cmd.ax_.set_xlabel('')
+        ax[0].set_title('Training data')
+
+    print(clf_title_test)
     if target_names is not None:
         print(classification_report(y_test, pred_test, target_names=target_names))
         cmd = ConfusionMatrixDisplay(confusion_matrix(y_test, pred_test, normalize=norm), display_labels=target_names).plot(ax=ax[1], cmap='Greens')
@@ -438,8 +429,8 @@ def find_first_el_index(df, first_el_var='version'):
             return i
     return -1
 
-def add_experience(df, variable, threshold):
-    df['experience'] = df[variable] > threshold
+def add_experience(df, variable, threshold, exp_colname='experienced'):
+    df[exp_colname] = df[variable] > threshold
     return df
 
 def get_by_id(path, id, ovid_data=False, original_data=False):
@@ -455,8 +446,125 @@ def get_by_id(path, id, ovid_data=False, original_data=False):
     _, _, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     return X.loc[id, :].to_numpy(), y.loc[id, 'label'], id in y_test.index
 
+def test_print_report(y_test, pred_test, title="", normalize=False, target_names=['Not Reverted', 'Reverted'], show_plot=True):
+    if not normalize:
+        normalize = None
+    if title != "":
+        print(f'####################### {title} #######################')
+    print(classification_report(y_test, pred_test, target_names=target_names))
+    fig, ax = plt.subplots(1, 1, sharey='row')
+    #ax.set_title('Training data')
+    cmd = ConfusionMatrixDisplay(confusion_matrix(y_test, pred_test, normalize=normalize), display_labels=target_names).plot(ax=ax, cmap='Greens')
+    cmd.im_.colorbar.remove()
+    cmd.ax_.set_xlabel('Predicted label')
+    cmd.ax_.set_ylabel('True label')
+    ax.set_title(title)
+    fig.tight_layout()
+    fig.show()
+    return cmd
+
+def count_tags(tag_df, print_fail_count=True):
+    keys_count, val_count, keyval_count = {}, {}, {}
+    fail_count = 0
+
+    for _, row in tag_df.iterrows():
+
+        curr_changeset = row['cs_id']
+
+        tags = row['tags']
+        prev_tags = row['prev_tags']
+
+        if tags == "{}" and prev_tags == "{}":
+            continue
+
+        tags = tags.replace(", \'", ", \"")
+        tags = tags.replace("\': ", "\": ")
+        tags = tags.replace(": \'", ": \"")
+        tags = tags.replace("\', ", "\", ")
+        tags = tags.replace("{\'", "{\"")
+        tags = tags.replace("\'}", "\"}")
+
+        prev_tags = prev_tags.replace(", \'", ", \"")
+        prev_tags = prev_tags.replace("\': ", "\": ")
+        prev_tags = prev_tags.replace(": \'", ": \"")
+        prev_tags = prev_tags.replace("\', ", "\", ")
+        prev_tags = prev_tags.replace("{\'", "{\"")
+        prev_tags = prev_tags.replace("\'}", "\"}")
+
+        try:
+            tags = json.loads(tags)
+            prev_tags = json.loads(prev_tags)
+            for key, val in tags.items():
+                keyval = f'{key}: {val}'
+                if key not in keys_count.keys():
+                    keys_count[key] = [0, 0, 0, 0]
+                if val not in val_count.keys():
+                    val_count[val] = [0, 0, 0, 0]
+                if keyval not in keyval_count.keys():
+                    keyval_count[keyval] = [0, 0, 0, 0]
+                keys_count[key][0] += 1
+                val_count[val][0] += 1
+                keyval_count[f'{key}: {val}'][0] += 1
+                if curr_changeset != keys_count[key][3]:
+                    keys_count[key][2] += 1
+                    keys_count[key][3] = curr_changeset
+                if curr_changeset != val_count[val][3]:
+                    val_count[val][2] += 1
+                    val_count[val][3] = curr_changeset
+                if curr_changeset != keyval_count[keyval][3]:
+                    keyval_count[keyval][2] += 1
+                    keyval_count[keyval][3] = curr_changeset
 
 
+            for key, val in prev_tags.items():
+                if key not in keys_count.keys():
+                    keys_count[key] = [0, 0, 0, 0]
+                if val not in val_count.keys():
+                    val_count[val] = [0, 0, 0, 0]
+                if f'{key}: {val}' not in keyval_count.keys():
+                    keyval_count[f'{key}: {val}'] = [0, 0, 0, 0]
+                keys_count[key][1] += 1
+                val_count[val][1] += 1
+                keyval_count[f'{key}: {val}'][1] += 1
+        except:
+            fail_count += 1
+
+    if print_fail_count:
+        print(fail_count)
+    for key, val in keys_count.items():
+        keys_count[key] = val[:-1]
+    for key, val in val_count.items():
+        val_count[key] = val[:-1]
+    for key, val in keyval_count.items():
+        keyval_count[key] = val[:-1]
+    df_key_count = pd.DataFrame.from_dict(keys_count, orient='index', columns=['current', 'previous', 'nchangesets'])
+    df_key_count.index.name = 'key'
+    df_val_count = pd.DataFrame.from_dict(val_count, orient='index', columns=['current', 'previous', 'nchangesets'])
+    df_val_count.index.name = 'value'
+    df_keyval_count = pd.DataFrame.from_dict(keyval_count, orient='index', columns=['current', 'previous', 'nchangesets'])
+    df_keyval_count.index.name = 'key:value'
+    return df_key_count, df_val_count, df_keyval_count
+
+
+def get_by_coords(path, X, y, max_lon_interval, max_lat_interval):
+    Xy = y.join(X)
+    X_big, _ = get_prepped_csudf(path)
+    drop_lon, drop_lat = False, False
+    if 'max_lon' not in Xy.columns:
+        Xy.join(X_big.loc[Xy.index, 'max_lon'])
+        drop_lon = True
+    if 'max_lat' not in Xy.columns:
+        Xy.join(X_big.loc[Xy.index, 'max_lat'])
+        drop_lat = True
+    Xy_in_interval = Xy.loc[(Xy['max_lon'] >= max_lon_interval[0]) &
+                         (Xy['max_lat'] >= max_lat_interval[0]) &
+                         (Xy['max_lon'] <= max_lon_interval[1]) &
+                         (Xy['max_lat'] <= max_lat_interval[1]), :]
+    if drop_lon:
+        Xy_in_interval.drop(columns='max_lon', inplace=True)
+    if drop_lat:
+        Xy_in_interval.drop(columns='max_lat', inplace=True)
+    return Xy_in_interval.drop(columns='label'), Xy_in_interval['label']
 
 
 
