@@ -11,12 +11,13 @@ from DataAnalysis.HelperFunctions import print_report
 
 
 class Ovid:
-    def __init__(self, no_changeset_features=21, no_user_features=9, no_edit_features=15):
+    def __init__(self, no_changeset_features=21, no_user_features=9, no_edit_features=15, binary=True):
         # detta är initialvärden för my_data.
         # för original_data, dvs för den datan som är närmst det Ovid själva använde, så är det (20, 9, 15).
         # skillnaden är att i my_data har vi imagery_used och nprev_changesets men inte acc_created, men i original_data har vi vice versa.
         self.scaler = None
         self.clf = None
+        self.binary = binary
 
         self.max_edits = 20
 
@@ -193,7 +194,7 @@ class Ovid:
         edit_mask = X[:, edit_features_end:edit_mask_end]
         return edit_mask.astype('uint8')
 
-    def fit(self, X, y, X_val, y_val):
+    def fit(self, X, y, X_val, y_val, epochs=100):
         edit_mask = self.get_edit_mask(X)
 
         self.scaler = StandardScaler()
@@ -209,25 +210,34 @@ class Ovid:
                                  no_edit_features=self.no_edit_features,
                                  max_edits=self.max_edits)
 
-        self.clf.build_model()
-        self.clf.fit(self._get_input_parts(X) + [edit_mask], y, val_data)
+        self.clf.build_model(binary=self.binary)
+        self.clf.fit(self._get_input_parts(X) + [edit_mask], y, val_data, epochs=epochs)
 
     def predict(self, X):
         edit_mask = self.get_edit_mask(X)
         X = self.scaler.transform(X)
-        result = self.clf.predict(self._get_input_parts(X) + [edit_mask])
-        result = result >= 0.5
-        return result.reshape(-1, )
+        if self.binary:
+            result = self.clf.predict(self._get_input_parts(X) + [edit_mask]) >= 0.5
+        else:
+            result = self.clf.predict_proba(self._get_input_parts(X) + [edit_mask]).reshape((-1, 3))
+            for i in range(result.shape[0]):
+                result[i, :] = np.where(result[i, :] == max(result[i, :]), 1, 0)
+        return result
 
     def predict_proba(self, X):
         edit_mask = self.get_edit_mask(X)
         X = self.scaler.transform(X)
-        result = self.clf.predict(self._get_input_parts(X) + [edit_mask])
-        return result.reshape(-1, )
+        result = self.clf.predict_proba(self._get_input_parts(X) + [edit_mask])
+        if self.binary:
+            result = result.reshape(-1, )
+        return result
 
     def fit_scaler(self, X):
         self.scaler = StandardScaler()
         self.scaler.fit_transform(X)
+
+    def transform(self, X):
+        return self.scaler.transform(X)
 
 def run_ovid():
     # to train a model a few hardcoded things need to be taken into consideration. Path where we save the model and what we have in features_df.
