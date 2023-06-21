@@ -1,4 +1,4 @@
-<way id="889387301" visible="true" version="2" changeset="120632684" timestamp="2022-05-06T13:58:17Z" user="bxl-forever" uid="2644288">
+<way id="889387301" visible="true" version="3" changeset="132463487" timestamp="2023-02-12T21:20:41Z" user="Yves Labeeuw" uid="5818792">
 <nd ref="8268400446"/>
 <nd ref="8268400447"/>
 <nd ref="8268400460"/>
@@ -6,6 +6,7 @@
 <nd ref="8268400449"/>
 <nd ref="8268400450"/>
 <nd ref="8268400451"/>
+<nd ref="8268400439"/>
 <nd ref="8268400452"/>
 <nd ref="8268400453"/>
 <nd ref="8268400454"/>
