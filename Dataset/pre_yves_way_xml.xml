@@ -1,0 +1,20 @@
+<way id="889387301" visible="true" version="2" changeset="120632684" timestamp="2022-05-06T13:58:17Z" user="bxl-forever" uid="2644288">
+<nd ref="8268400446"/>
+<nd ref="8268400447"/>
+<nd ref="8268400460"/>
+<nd ref="8268400448"/>
+<nd ref="8268400449"/>
+<nd ref="8268400450"/>
+<nd ref="8268400451"/>
+<nd ref="8268400452"/>
+<nd ref="8268400453"/>
+<nd ref="8268400454"/>
+<nd ref="8268400455"/>
+<nd ref="8268400456"/>
+<nd ref="8268400457"/>
+<nd ref="8268400458"/>
+<nd ref="8268400459"/>
+<nd ref="8268400460"/>
+<tag k="highway" v="path"/>
+<tag k="layer" v="1"/>
+</way>
